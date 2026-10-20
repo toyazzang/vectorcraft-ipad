@@ -4,8 +4,9 @@
 usage: build_site.py <unzipped_dir> <out_dir> --tag <release tag>
 
 <unzipped_dir> holds the folder from vectorcraft-web-<version>.zip. The upstream files
-(index.html, the hashed .js and .wasm) are copied unchanged; only index.html gets three
-extra lines: the manifest link, the home-screen icon and the service-worker registration.
+(index.html, the hashed .js and .wasm) are copied unchanged; only index.html gets a few
+extra lines: the manifest link, the home-screen icon, the language fix and the
+service-worker registration.
 """
 import argparse
 import json
@@ -25,6 +26,20 @@ REMOVED = {"_headers", ".htaccess"}
 
 HEAD_INSERT = """  <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-180.png">
+  <script>
+    // The web build has no Korean font, so a Korean interface shows empty boxes.
+    // Report English to the app in that case; other languages are left alone.
+    (function () {
+      try {
+        var first = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+        if (/^ko/i.test(first)) {
+          var langs = ['en-US', 'en'];
+          Object.defineProperty(navigator, 'languages', { get: function () { return langs; }, configurable: true });
+          Object.defineProperty(navigator, 'language', { get: function () { return langs[0]; }, configurable: true });
+        }
+      } catch (e) {}
+    })();
+  </script>
   <script>
     // Offline use: cache the app after it has started, and ask the browser to keep it.
     if ('serviceWorker' in navigator) {
