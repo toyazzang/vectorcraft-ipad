@@ -4,11 +4,11 @@
 usage: build_site.py <unzipped_dir> <out_dir> --tag <release tag>
 
 <unzipped_dir> holds the folder from vectorcraft-web-<version>.zip. The upstream files
-(index.html, the hashed .js and .wasm) are copied unchanged; only index.html gets a few
-extra lines: the manifest link, the home-screen icon, the language fix and the
-service-worker registration.
+(index.html, the hashed .js and .wasm) are copied unchanged; only index.html gets three
+extra lines: the manifest link, the home-screen icon and the service-worker registration.
 """
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -99,12 +99,24 @@ def main() -> None:
     (out / ".nojekyll").write_text("", encoding="utf-8")
 
     files = precache_list(out)
+    # A fingerprint of every small file we serve (the big .js/.wasm names already carry a
+    # hash). It goes into sw.js so that any change to index.html, the manifest or the icons
+    # makes the browser install a new version.
+    digest = hashlib.sha256()
+    for f in files:
+        path = out / f[2:]
+        if f != "./" and path.stat().st_size < 1_000_000:
+            digest.update(f.encode() + b"\0" + path.read_bytes() + b"\0")
+        else:
+            digest.update(f.encode() + b"\0")
+    build_id = digest.hexdigest()[:12]
     sw = (TEMPLATES / "sw.template.js").read_text(encoding="utf-8")
-    sw = sw.replace("__TAG__", args.tag).replace("__FILES__", json.dumps(files, indent=2))
+    sw = (sw.replace("__TAG__", args.tag).replace("__BUILD__", build_id)
+            .replace("__FILES__", json.dumps(files, indent=2)))
     (out / "sw.js").write_text(sw, encoding="utf-8")
 
     total = sum((out / f[2:]).stat().st_size for f in files if f != "./")
-    print(f"release {args.tag}: {len(files)} cached entries, {total / 1e6:.1f} MB")
+    print(f"release {args.tag} build {build_id}: {len(files)} cached entries, {total / 1e6:.1f} MB")
     for f in files:
         print("  ", f)
 
