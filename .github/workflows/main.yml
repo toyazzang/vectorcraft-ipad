@@ -1,0 +1,59 @@
+name: Deploy VectorCraft (iPad web app)
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # every day, 12:17 Korea time; picks up new upstream releases
+  workflow_dispatch:        # "Run workflow" button in the Actions tab
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the latest VectorCraft web release and verify it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=$(gh release view --repo storytold/vectorcraft --json tagName -q .tagName)
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          mkdir dl
+          gh release download "$TAG" --repo storytold/vectorcraft \
+            --pattern 'vectorcraft-web-*.zip' --pattern 'SHA256SUMS.txt' --dir dl
+          cd dl
+          sha256sum -c --ignore-missing SHA256SUMS.txt
+
+      - name: Build the site
+        run: |
+          set -euo pipefail
+          mkdir unzipped
+          unzip -q dl/vectorcraft-web-*.zip -d unzipped
+          python3 scripts/build_site.py unzipped site --tag "$TAG"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
