@@ -13,6 +13,9 @@
 // version is used the next time the app is opened.
 
 const TAG = '__TAG__';
+// BUILD changes whenever index.html, the manifest or an icon changes. That changes this
+// file's bytes, which is how the browser notices there is a new version to install.
+const BUILD = '__BUILD__';
 const CACHE = 'vectorcraft-offline';
 const FILES = __FILES__;
 const ALWAYS_REFRESH = new Set(['./', './index.html', './manifest.webmanifest']);
@@ -22,7 +25,13 @@ const abs = (path) => new URL(path, self.registration.scope).href;
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    for (const path of FILES) {
+    // Big hashed files first, the page that points at them last: if the install is cut
+    // short, the old page keeps working with files that are all still there.
+    const ordered = [
+      ...FILES.filter((path) => !ALWAYS_REFRESH.has(path)),
+      ...FILES.filter((path) => ALWAYS_REFRESH.has(path)),
+    ];
+    for (const path of ordered) {
       const url = abs(path);
       const refresh = ALWAYS_REFRESH.has(path);
       if (!refresh && (await cache.match(url))) continue;
